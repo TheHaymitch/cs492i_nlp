@@ -43,9 +43,20 @@ from transformers import (
     XLNetConfig,
     XLNetForQuestionAnswering,
     XLNetTokenizer,
+    ElectraConfig,
+    ElectraTokenizer,
+    ElectraModel,
+    ElectraForQuestionAnswering,
+    XLMRobertaConfig,
+    XLMRobertaTokenizer,
+    # XLMRobertaForQuestionAnswering,
+    XLMRobertaModel,
     get_linear_schedule_with_warmup,
 )
 from open_squad import squad_convert_examples_to_features
+
+import logging
+logging.basicConfig(level=logging.ERROR)
 
 '''
 from transformers.data.metrics.squad_metrics import (
@@ -73,18 +84,20 @@ logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
-ALL_MODELS = sum(
-    (tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig, XLNetConfig, XLMConfig)),
-    (),
-)
+# ALL_MODELS = sum(
+#     (tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig, XLNetConfig, XLMConfig)),
+#     (),
+# )
 
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForQuestionAnswering, BertTokenizer),
-    "roberta": (RobertaConfig, RobertaForQuestionAnswering, RobertaTokenizer),
+    # "roberta": (RobertaConfig, RobertaForQuestionAnswering, RobertaTokenizer),
+    "roberta": ( XLMRobertaConfig, XLMRobertaTokenizer, XLMRobertaModel),
     "xlnet": (XLNetConfig, XLNetForQuestionAnswering, XLNetTokenizer),
     "xlm": (XLMConfig, XLMForQuestionAnswering, XLMTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer),
     "albert": (AlbertConfig, AlbertForQuestionAnswering, AlbertTokenizer),
+    "electra" : (ElectraConfig, ElectraForQuestionAnswering, ElectraTokenizer),
 }
 
 
@@ -580,7 +593,7 @@ def main():
         default=None,
         type=str,
         required=True,
-        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS),
+        # help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS),
     )
     parser.add_argument(
         "--output_dir",
@@ -825,7 +838,9 @@ def main():
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case,
         cache_dir=args.cache_dir if args.cache_dir else None,
-    )
+    )   
+    print("model download start")    
+    print("ckpt exist?", bool(".ckpt" in args.model_name_or_path))
     model = model_class.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),

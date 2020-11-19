@@ -130,7 +130,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
 
     spans = []
 
-    truncated_query = tokenizer.encode(example.question_text, add_special_tokens=False, max_length=max_query_length)
+    truncated_query = tokenizer.encode(example.question_text, add_special_tokens=False, max_length=max_query_length, truncation=True)
     sequence_added_tokens = (
         tokenizer.max_len - tokenizer.max_len_single_sentence + 1
         if "roberta" in str(type(tokenizer))
@@ -149,6 +149,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
             pad_to_max_length=True,
             stride=max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens,
             truncation_strategy="only_second" if tokenizer.padding_side == "right" else "only_first",
+            truncation=True,
         )
 
         paragraph_len = min(
