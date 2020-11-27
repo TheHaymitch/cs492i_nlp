@@ -93,6 +93,31 @@ def get_raw_scores(examples, preds):
 
     return exact_scores, f1_scores
 
+def get_test_raw_scores(examples, preds):
+    """
+    Computes the exact and f1 scores from the examples and the model predictions
+    """
+    exact_scores = {}
+    f1_scores = {}
+
+    for example in examples:
+        qas_id = example.qas_id
+        qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
+        gold_answers = [answer["text"] for answer in example.answers if normalize_answer(answer["text"])]
+
+        if not gold_answers:
+            # For unanswerable questions, only correct answer is empty string
+            gold_answers = [""]
+
+        if qa_id_without_s not in preds:
+            print("Missing prediction for %s" % qa_id_without_s)
+            continue
+
+        prediction = preds[qa_id_without_s]
+        exact_scores[qa_id_without_s] = max(compute_exact(a, prediction) for a in gold_answers)
+        f1_scores[qa_id_without_s] = max(compute_f1(a, prediction) for a in gold_answers)
+
+    return exact_scores, f1_scores
 
 def apply_no_ans_threshold(scores, na_probs, qid_to_has_ans, na_prob_thresh):
     new_scores = {}
@@ -209,15 +234,24 @@ def find_all_best_thresh(main_eval, preds, exact_raw, f1_raw, na_probs, qid_to_h
     main_eval["best_f1_thresh"] = f1_thresh
 
 
-def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_threshold=1.0):
+def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_threshold=1.0, val_or_test="test"):
     qas_id_to_has_answer = {example.qas_id: bool(example.answers) for example in examples}
     has_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if has_answer]
     no_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if not has_answer]
 
+    print("squad evaluate for", val_or_test)
+    if val_or_test!="valid":
+        qas_id_to_has_answer = {"[SEP]".join(example.qas_id.split("[SEP]")[:2]): bool(example.answers) for example in examples}
+        has_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if has_answer]
+        no_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if not has_answer]
+
     if no_answer_probs is None:
         no_answer_probs = {k: 0.0 for k in preds}
 
-    exact, f1 = get_raw_scores(examples, preds)
+    if val_or_test=="valid":
+        exact, f1 = get_raw_scores(examples, preds)
+    else:
+        exact, f1 = get_test_raw_scores(examples, preds)
 
     exact_threshold = apply_no_ans_threshold(
         exact, no_answer_probs, qas_id_to_has_answer, no_answer_probability_threshold
@@ -228,16 +262,18 @@ def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_
 
     if has_answer_qids:
         has_ans_eval = make_eval_dict(exact_threshold, f1_threshold, qid_list=has_answer_qids)
+        print("HasAns: Exact is ",has_ans_eval["exact"], "F1 is", has_ans_eval["f1"], "Total is", has_ans_eval["total"])
         merge_eval(evaluation, has_ans_eval, "HasAns")
 
     if no_answer_qids:
         no_ans_eval = make_eval_dict(exact_threshold, f1_threshold, qid_list=no_answer_qids)
+        print("NoAns: Exact is ",no_ans_eval["exact"], "F1 is", no_ans_eval["f1"], "Total is", no_ans_eval["total"])
         merge_eval(evaluation, no_ans_eval, "NoAns")
 
     if no_answer_probs:
         find_all_best_thresh(evaluation, preds, exact, f1, no_answer_probs, qas_id_to_has_answer)
-
-    return evaluation
+    print("Total Exact is", evaluation["exact"], "Total F1 is", evaluation["f1"])
+    return evaluation, has_ans_eval, no_ans_eval
 
 
 # TODO : incomplete
@@ -408,7 +444,7 @@ def _compute_softmax(scores):
     return probs
 
 
-def select_best_predictions(all_nbest_json):
+def select_best_predictions(all_nbest_json, null_score_diff_threshold=None):
     # todo: How to select the best answer among different contexts.
     best_answer_max_prob = collections.OrderedDict()
     best_answer_predictions = collections.OrderedDict()
@@ -618,26 +654,27 @@ def compute_predictions_logits(
             scores_diff_json[example.qas_id] = score_diff
             if score_diff > null_score_diff_threshold or best_non_null_entry is None:
                 all_predictions[example.qas_id] = ""
+                # nbest_json[0]["text"] = ""
             else:
                 all_predictions[example.qas_id] = best_non_null_entry.text
-        all_nbest_json[example.qas_id] = nbest_json
+            all_nbest_json[example.qas_id] = nbest_json
 
-    if not is_test:
-        with open(output_prediction_file, "w") as writer:
-            writer.write(json.dumps(all_predictions, indent=4) + "\n")
+    # if not is_test:
+    #     with open(output_prediction_file, "w") as writer:
+    #         writer.write(json.dumps(all_predictions, indent=4) + "\n")
 
-        with open(output_nbest_file, "w") as writer:
-            writer.write(json.dumps(all_nbest_json, indent=4) + "\n")
+    #     with open(output_nbest_file, "w") as writer:
+    #         writer.write(json.dumps(all_nbest_json, indent=4) + "\n")
 
-        if version_2_with_negative:
-            with open(output_null_log_odds_file, "w") as writer:
-                writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
+    #     if version_2_with_negative:
+    #         with open(output_null_log_odds_file, "w") as writer:
+    #             writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
 
-        return all_predictions
+    #     return all_predictions
 
-    else:
+    # else:
         # todo: How to select the best answer among different contexts.
-        return select_best_predictions(all_nbest_json)
+    return select_best_predictions(all_nbest_json, null_score_diff_threshold)
 
 
 def compute_predictions_log_probs(
