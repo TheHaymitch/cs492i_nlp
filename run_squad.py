@@ -22,6 +22,9 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+# import torch.utils.checkpoint as checkpoint
+
+# from models import ElectraForQuestionAnsweringAVPool
 
 from transformers import (
     AdamW,
@@ -98,6 +101,7 @@ MODEL_CLASSES = {
     "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer),
     "albert": (AlbertConfig, AlbertForQuestionAnswering, AlbertTokenizer),
     "electra" : (ElectraConfig, ElectraForQuestionAnswering, ElectraTokenizer),
+    # "electra" : (ElectraConfig, ElectraForQuestionAnsweringAVPool, ElectraTokenizer),
 }
 
 
@@ -271,14 +275,17 @@ def train(args, train_dataset, model, tokenizer):
                 "start_positions": batch[3],
                 "end_positions": batch[4],
             }
+            # if args.version_2_with_negative:
+            #     inputs.update({"is_impossibles": batch[5]})
 
             if args.model_type in ["xlm", "roberta", "distilbert"]:
                 del inputs["token_type_ids"]
 
             if args.model_type in ["xlnet", "xlm"]:
-                inputs.update({"cls_index": batch[5], "p_mask": batch[6]})
-                if args.version_2_with_negative:
-                    inputs.update({"is_impossible": batch[7]})
+                inputs.update({"cls_index": batch[6], "p_mask": batch[7]})
+                # if args.version_2_with_negative:
+                #     inputs.update({"is_impossible": batch[7]})
+            # outputs = checkpoint.checkpoint(model, **inputs)
             outputs = model(**inputs)
             # model outputs are always tuple in transformers (see doc)
             loss = outputs[0]
@@ -312,8 +319,10 @@ def train(args, train_dataset, model, tokenizer):
                     # Only evaluate when single GPU otherwise metrics may not average well
                     if args.evaluate_during_training:
                         logger.info("Validation start for epoch {}".format(epoch))
-                        result = evaluate(args, model, tokenizer, prefix=epoch)
+                        result, has_ans_eval, no_ans_eval = evaluate(args, model, tokenizer, prefix=epoch)
                         _f1, _exact = result["f1"], result["exact"]
+                        _has_f1 , _has_exact = has_ans_eval["f1"], has_ans_eval["exact"]
+                        _no_f1, _no_exact = no_ans_eval["f1"], no_ans_eval["exact"]
                         is_best = _f1 > best_f1
                         best_f1 = max(_f1, best_f1)
 
@@ -324,7 +333,7 @@ def train(args, train_dataset, model, tokenizer):
                             "best_f1_val = {}, f1_val = {}, exact_val = {}, loss = {}, global_step = {}, " \
                             .format(best_f1, _f1, _exact, current_loss, global_step))
                         if IS_ON_NSML:
-                            nsml.report(summary=True, step=global_step, f1=_f1, exact=_exact, loss=current_loss)
+                            nsml.report(summary=True, step=global_step, f1=_f1, exact=_exact, loss=current_loss, has_ans_f1=_has_f1, no_ans_f1=_no_f1)
                             if is_best:
                                 nsml.save(args.model_type + "_best")
 
@@ -364,8 +373,8 @@ def train(args, train_dataset, model, tokenizer):
 def evaluate(args, model, tokenizer, prefix="", val_or_test="val"):
     examples, predictions = predict(args, model, tokenizer, prefix=prefix, val_or_test=val_or_test)
     # Compute the F1 and exact scores.
-    results = squad_evaluate(examples, predictions)
-    return results
+    results, has_ans_eval, no_ans_eval = squad_evaluate(examples, predictions)
+    return results, has_ans_eval, no_ans_eval
 
 
 def predict(args, model, tokenizer, prefix="", val_or_test="val"):
@@ -442,6 +451,8 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
                 )
 
             else:
+                # start_logits, end_logits, choice_logits = output
+                # result = SquadResult(unique_id, start_logits, end_logits, choice_logits)
                 start_logits, end_logits = output
                 result = SquadResult(unique_id, start_logits, end_logits)
 
