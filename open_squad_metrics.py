@@ -457,6 +457,8 @@ def select_best_predictions(all_nbest_json, null_score_diff_threshold=None):
             best_answer_max_prob[qa_id_without_s] = prob
             best_answer_predictions[qa_id_without_s] = text
         else:
+            # if best_answer_predictions[qa_id_without_s] == text:
+            #     best_answer_max_prob[qa_id_without_s] += prob
             is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
             if is_max_prob_updated:
                 best_answer_max_prob[qa_id_without_s] = prob
@@ -654,7 +656,7 @@ def compute_predictions_logits(
             scores_diff_json[example.qas_id] = score_diff
             if score_diff > null_score_diff_threshold or best_non_null_entry is None:
                 all_predictions[example.qas_id] = ""
-                # nbest_json[0]["text"] = ""
+                nbest_json[0]["text"] = ""
             else:
                 all_predictions[example.qas_id] = best_non_null_entry.text
             all_nbest_json[example.qas_id] = nbest_json
