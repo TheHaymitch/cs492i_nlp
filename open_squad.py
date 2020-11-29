@@ -443,224 +443,7 @@ def share_words(sent1, sent2):
         for j in range(len(sent2_words)):
             if sent1_words[i] in sent2_words[j] or sent2_words[j] in sent1_words[i]:
                 share_cnt += 1
-    return share_cnt / (len(sent1_words) * len(sent2_words))
-
-class SquadProcessor(DataProcessor):
-    """
-    Processor for the SQuAD data set.
-    Overriden by SquadV1Processor and SquadV2Processor, used by the version 1.1 and version 2.0 of SQuAD, respectively.
-    """
-
-    train_file = None
-    dev_file = None
-
-    def _get_example_from_tensor_dict(self, tensor_dict, evaluate=False):
-        if not evaluate:
-            answer = tensor_dict["answers"]["text"][0].numpy().decode("utf-8")
-            answer_start = tensor_dict["answers"]["answer_start"][0].numpy()
-            answers = []
-        else:
-            answers = [
-                {"answer_start": start.numpy(), "text": text.numpy().decode("utf-8")}
-                for start, text in zip(tensor_dict["answers"]["answer_start"], tensor_dict["answers"]["text"])
-            ]
-
-            answer = None
-            answer_start = None
-
-        return SquadExample(
-            qas_id=tensor_dict["id"].numpy().decode("utf-8"),
-            question_text=tensor_dict["question"].numpy().decode("utf-8"),
-            context_text=tensor_dict["context"].numpy().decode("utf-8"),
-            answer_text=answer,
-            start_position_character=answer_start,
-            title=tensor_dict["title"].numpy().decode("utf-8"),
-            answers=answers,
-        )
-
-    def get_examples_from_dataset(self, dataset, evaluate=False):
-        """
-        Creates a list of :class:`~transformers.data.processors.squad.SquadExample` using a TFDS dataset.
-
-        Args:
-            dataset: The tfds dataset loaded from `tensorflow_datasets.load("squad")`
-            evaluate: boolean specifying if in evaluation mode or in training mode
-
-        Returns:
-            List of SquadExample
-
-        Examples::
-
-            import tensorflow_datasets as tfds
-            dataset = tfds.load("squad")
-
-            training_examples = get_examples_from_dataset(dataset, evaluate=False)
-            evaluation_examples = get_examples_from_dataset(dataset, evaluate=True)
-        """
-
-        if evaluate:
-            dataset = dataset["validation"]
-        else:
-            dataset = dataset["train"]
-
-        examples = []
-        for tensor_dict in tqdm(dataset):
-            examples.append(self._get_example_from_tensor_dict(tensor_dict, evaluate=evaluate))
-
-        return examples
-
-    def get_train_examples(self, data_dir, filename=None):
-        """
-        Returns the training examples from the data directory.
-
-        Args:
-            data_dir: Directory containing the data files used for training and evaluating.
-            filename: None by default, specify this if the training file has a different name than the original one
-                which is `train-v1.1.json` and `train-v2.0.json` for squad versions 1.1 and 2.0 respectively.
-
-        """
-        if data_dir is None:
-            data_dir = ""
-
-        if self.train_file is None:
-            raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
-
-        with open(
-                os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
-        ) as reader:
-            input_data = json.load(reader)["data"]
-        return self._create_examples(input_data, "train")
-
-    def get_eval_examples(self, data_dir, filename=None):
-        """
-        Returns the evaluation example from the data directory.
-
-        Args:
-            data_dir: Directory containing the data files used for training and evaluating.
-            filename: None by default, specify this if the evaluation file has a different name than the original one
-                which is `train-v1.1.json` and `train-v2.0.json` for squad versions 1.1 and 2.0 respectively.
-        """
-        if data_dir is None:
-            data_dir = ""
-
-        if self.dev_file is None:
-            raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
-
-        with open(
-                os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
-        ) as reader:
-            input_data = json.load(reader)["data"]
-        return self._create_examples(input_data, "dev")
-
-    def _create_examples(self, input_data, set_type):
-        is_training = set_type == "train"
-        examples = []
-
-        has_answer_cnt, no_answer_cnt = 0, 0
-        for entry in tqdm(input_data[:]):
-            qa = entry['qa']
-            question_text = qa["question"]
-            answer_text = qa['answer']
-            if question_text is None or answer_text is None:
-                continue
-
-            per_qa_paragraph_cnt = 0
-            per_qa_unans_paragraph_cnt = 0
-            share_list = []
-            for pi, paragraph in enumerate(entry["paragraphs"]):
-                title = paragraph["title"]
-                context_text = str(paragraph["contents"])
-                if context_text is None:
-                    continue
-                qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
-                start_position_character = None
-                answers = []
-
-                if answer_text not in context_text:
-                    is_impossible = True
-                else:
-                    is_impossible = False
-
-                share_cnt = share_words(question_text, title)
-                share_list.append((pi, share_cnt))
-                
-
-                # if not is_impossible:
-                #     if is_training:
-                #         start_position_character = context_text.index(answer_text)  # answer["answer_start"]
-                #     else:
-                #         answers = [{"text": answer_text,
-                #                     "answer_start": context_text.index(answer_text)}]
-
-                # example = SquadExample(
-                #     qas_id=qas_id,
-                #     question_text=question_text,
-                #     context_text=context_text,
-                #     answer_text=answer_text,
-                #     start_position_character=start_position_character,
-                #     title=title,
-                #     is_impossible=is_impossible,
-                #     answers=answers,
-                # )
-                # if is_impossible:
-                #     no_answer_cnt += 1
-                #     per_qa_unans_paragraph_cnt += 1
-                # else:
-                #     has_answer_cnt += 1
-
-                # if is_impossible and per_qa_unans_paragraph_cnt > 3:
-                #     continue
-
-                # # todo: How to select training samples considering a memory limit.
-                # per_qa_paragraph_cnt += 1
-                # if is_training and per_qa_paragraph_cnt > 3:
-                #     break
-
-                # examples.append(example)
-
-            sort_share_list = sorted(share_list, key=lambda element:element[0], reverse=True)
-            # print(len(share_list))
-            pis = []
-            for i in range(3 if len(sort_share_list) > 3 else len(sort_share_list)):
-                pis.append(sort_share_list[i][0])
-
-            for pi, paragraph in enumerate(entry["paragraphs"]):
-                if pi not in pis:
-                    continue
-                title = paragraph["title"]
-                context_text = str(paragraph["contents"])
-                if context_text is None:
-                    continue
-                qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
-                start_position_character = None
-                answers = []
-
-                if answer_text not in context_text:
-                    is_impossible = True
-                else:
-                    is_impossible = False
-
-                if not is_impossible:
-                    if is_training:
-                        start_position_character = context_text.index(answer_text)  # answer["answer_start"]
-                    else:
-                        answers = [{"text": answer_text,
-                                    "answer_start": context_text.index(answer_text)}]
-
-                example = SquadExample(
-                    qas_id=qas_id,
-                    question_text=question_text,
-                    context_text=context_text,
-                    answer_text=answer_text,
-                    start_position_character=start_position_character,
-                    title=title,
-                    is_impossible=is_impossible,
-                    answers=answers,
-                )
-                examples.append(example)              
-
-        # print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
-        return examples
+    return share_cnt / (len(sent1_words) + len(sent2_words))
 
 # class SquadProcessor(DataProcessor):
 #     """
@@ -783,7 +566,69 @@ class SquadProcessor(DataProcessor):
 
 #             per_qa_paragraph_cnt = 0
 #             per_qa_unans_paragraph_cnt = 0
+#             share_list = []
 #             for pi, paragraph in enumerate(entry["paragraphs"]):
+#                 title = paragraph["title"]
+#                 context_text = str(paragraph["contents"])
+#                 if context_text is None:
+#                     continue
+#                 qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
+#                 start_position_character = None
+#                 answers = []
+
+#                 if answer_text not in context_text:
+#                     is_impossible = True
+#                     share_cnt = share_words(question_text, title)
+#                     share_list.append((pi, share_cnt))
+#                 else:
+#                     is_impossible = False
+#                     share_list.append((pi,1000000))
+
+#                 # share_cnt = share_words(question_text, title)
+#                 # share_list.append((pi, share_cnt))
+
+#                 # if not is_impossible:
+#                 #     if is_training:
+#                 #         start_position_character = context_text.index(answer_text)  # answer["answer_start"]
+#                 #     else:
+#                 #         answers = [{"text": answer_text,
+#                 #                     "answer_start": context_text.index(answer_text)}]
+
+#                 # example = SquadExample(
+#                 #     qas_id=qas_id,
+#                 #     question_text=question_text,
+#                 #     context_text=context_text,
+#                 #     answer_text=answer_text,
+#                 #     start_position_character=start_position_character,
+#                 #     title=title,
+#                 #     is_impossible=is_impossible,
+#                 #     answers=answers,
+#                 # )
+#                 # if is_impossible:
+#                 #     no_answer_cnt += 1
+#                 #     per_qa_unans_paragraph_cnt += 1
+#                 # else:
+#                 #     has_answer_cnt += 1
+
+#                 # if is_impossible and per_qa_unans_paragraph_cnt > 3:
+#                 #     continue
+
+#                 # # todo: How to select training samples considering a memory limit.
+#                 # per_qa_paragraph_cnt += 1
+#                 # if is_training and per_qa_paragraph_cnt > 3:
+#                 #     break
+
+#                 # examples.append(example)
+
+#             sort_share_list = sorted(share_list, key=lambda element:element[0], reverse=True)
+#             # print(len(share_list))
+#             pis = []
+#             for i in range(3 if len(sort_share_list) > 3 else len(sort_share_list)):
+#                 pis.append(sort_share_list[i][0])
+
+#             for pi, paragraph in enumerate(entry["paragraphs"]):
+#                 if pi not in pis:
+#                     continue
 #                 title = paragraph["title"]
 #                 context_text = str(paragraph["contents"])
 #                 if context_text is None:
@@ -814,24 +659,259 @@ class SquadProcessor(DataProcessor):
 #                     is_impossible=is_impossible,
 #                     answers=answers,
 #                 )
-#                 if is_impossible:
-#                     no_answer_cnt += 1
-#                     per_qa_unans_paragraph_cnt += 1
-#                 else:
-#                     has_answer_cnt += 1
+#                 examples.append(example)              
 
-#                 if is_impossible and per_qa_unans_paragraph_cnt > 3:
-#                     continue
-
-#                 # todo: How to select training samples considering a memory limit.
-#                 per_qa_paragraph_cnt += 1
-#                 if is_training and per_qa_paragraph_cnt > 3:
-#                     break
-
-#                 examples.append(example)
-
-#         print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
+#         # print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
 #         return examples
+
+class SquadProcessor(DataProcessor):
+    """
+    Processor for the SQuAD data set.
+    Overriden by SquadV1Processor and SquadV2Processor, used by the version 1.1 and version 2.0 of SQuAD, respectively.
+    """
+
+    train_file = None
+    dev_file = None
+
+    def _get_example_from_tensor_dict(self, tensor_dict, evaluate=False):
+        if not evaluate:
+            answer = tensor_dict["answers"]["text"][0].numpy().decode("utf-8")
+            answer_start = tensor_dict["answers"]["answer_start"][0].numpy()
+            answers = []
+        else:
+            answers = [
+                {"answer_start": start.numpy(), "text": text.numpy().decode("utf-8")}
+                for start, text in zip(tensor_dict["answers"]["answer_start"], tensor_dict["answers"]["text"])
+            ]
+
+            answer = None
+            answer_start = None
+
+        return SquadExample(
+            qas_id=tensor_dict["id"].numpy().decode("utf-8"),
+            question_text=tensor_dict["question"].numpy().decode("utf-8"),
+            context_text=tensor_dict["context"].numpy().decode("utf-8"),
+            answer_text=answer,
+            start_position_character=answer_start,
+            title=tensor_dict["title"].numpy().decode("utf-8"),
+            answers=answers,
+        )
+
+    def get_examples_from_dataset(self, dataset, evaluate=False):
+        """
+        Creates a list of :class:`~transformers.data.processors.squad.SquadExample` using a TFDS dataset.
+
+        Args:
+            dataset: The tfds dataset loaded from `tensorflow_datasets.load("squad")`
+            evaluate: boolean specifying if in evaluation mode or in training mode
+
+        Returns:
+            List of SquadExample
+
+        Examples::
+
+            import tensorflow_datasets as tfds
+            dataset = tfds.load("squad")
+
+            training_examples = get_examples_from_dataset(dataset, evaluate=False)
+            evaluation_examples = get_examples_from_dataset(dataset, evaluate=True)
+        """
+
+        if evaluate:
+            dataset = dataset["validation"]
+        else:
+            dataset = dataset["train"]
+
+        examples = []
+        for tensor_dict in tqdm(dataset):
+            examples.append(self._get_example_from_tensor_dict(tensor_dict, evaluate=evaluate))
+
+        return examples
+
+    def get_train_examples(self, data_dir, filename=None):
+        """
+        Returns the training examples from the data directory.
+
+        Args:
+            data_dir: Directory containing the data files used for training and evaluating.
+            filename: None by default, specify this if the training file has a different name than the original one
+                which is `train-v1.1.json` and `train-v2.0.json` for squad versions 1.1 and 2.0 respectively.
+
+        """
+        if data_dir is None:
+            data_dir = ""
+
+        if self.train_file is None:
+            raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
+
+        with open(
+                os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
+        ) as reader:
+            input_data = json.load(reader)["data"]
+        return self._create_examples(input_data, "train")
+
+    def get_eval_examples(self, data_dir, filename=None):
+        """
+        Returns the evaluation example from the data directory.
+
+        Args:
+            data_dir: Directory containing the data files used for training and evaluating.
+            filename: None by default, specify this if the evaluation file has a different name than the original one
+                which is `train-v1.1.json` and `train-v2.0.json` for squad versions 1.1 and 2.0 respectively.
+        """
+        if data_dir is None:
+            data_dir = ""
+
+        if self.dev_file is None:
+            raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
+
+        with open(
+                os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
+        ) as reader:
+            input_data = json.load(reader)["data"]
+        return self._create_examples(input_data, "dev")
+
+    # def _create_examples(self, input_data, set_type):
+    #     is_training = set_type == "train"
+    #     examples = []
+
+    #     has_answer_cnt, no_answer_cnt = 0, 0
+    #     for entry in tqdm(input_data[:]):
+    #         qa = entry['qa']
+    #         question_text = qa["question"]
+    #         answer_text = qa['answer']
+    #         if question_text is None or answer_text is None:
+    #             continue
+
+    #         per_qa_paragraph_cnt = 0
+    #         per_qa_unans_paragraph_cnt = 0
+    #         share_list = []
+    #         for pi, paragraph in enumerate(entry["paragraphs"]):
+    #             title = paragraph["title"]
+    #             context_text = str(paragraph["contents"])
+    #             if context_text is None:
+    #                 continue
+    #             qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
+    #             start_position_character = None
+    #             answers = []
+
+    #             if answer_text not in context_text:
+    #                 is_impossible = True
+    #                 share_cnt = share_words(question_text, title)
+    #                 share_list.append((pi, share_cnt))
+    #             else:
+    #                 is_impossible = False
+    #                 share_list.append((pi,1000000))
+
+    #             # share_cnt = share_words(question_text, title)
+    #             # share_list.append((pi, share_cnt))
+
+    #         sort_share_list = sorted(share_list, key=lambda element:element[1], reverse=True)
+    #         # print(len(share_list))
+    #         pis = []
+    #         for i in range(3 if len(sort_share_list) > 3 else len(sort_share_list)):
+    #             pis.append(sort_share_list[i][0])
+
+    #         for pi, paragraph in enumerate(entry["paragraphs"]):
+    #             if pi not in pis:
+    #                 continue
+    #             title = paragraph["title"]
+    #             context_text = str(paragraph["contents"])
+    #             if context_text is None:
+    #                 continue
+    #             qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
+    #             start_position_character = None
+    #             answers = []
+
+    #             if answer_text not in context_text:
+    #                 is_impossible = True
+    #                 no_answer_cnt += 1
+    #             else:
+    #                 is_impossible = False
+    #                 has_answer_cnt += 1
+
+    #             if not is_impossible:
+    #                 if is_training:
+    #                     start_position_character = context_text.index(answer_text)  # answer["answer_start"]
+    #                 else:
+    #                     answers = [{"text": answer_text,
+    #                                 "answer_start": context_text.index(answer_text)}]
+
+    #             example = SquadExample(
+    #                 qas_id=qas_id,
+    #                 question_text=question_text,
+    #                 context_text=context_text,
+    #                 answer_text=answer_text,
+    #                 start_position_character=start_position_character,
+    #                 title=title,
+    #                 is_impossible=is_impossible,
+    #                 answers=answers,
+    #             )
+    #             examples.append(example) 
+
+    def _create_examples(self, input_data, set_type):
+        is_training = set_type == "train"
+        examples = []
+
+        has_answer_cnt, no_answer_cnt = 0, 0
+        for entry in tqdm(input_data[:]):
+            qa = entry['qa']
+            question_text = qa["question"]
+            answer_text = qa['answer']
+            if question_text is None or answer_text is None:
+                continue
+
+            per_qa_paragraph_cnt = 0
+            per_qa_unans_paragraph_cnt = 0
+            for pi, paragraph in enumerate(entry["paragraphs"]):
+                title = paragraph["title"]
+                context_text = str(paragraph["contents"])
+                if context_text is None:
+                    continue
+                qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, pi)
+                start_position_character = None
+                answers = []
+
+                if answer_text not in context_text:
+                    is_impossible = True
+                else:
+                    is_impossible = False
+
+                if not is_impossible:
+                    if is_training:
+                        start_position_character = context_text.index(answer_text)  # answer["answer_start"]
+                    else:
+                        answers = [{"text": answer_text,
+                                    "answer_start": context_text.index(answer_text)}]
+
+                example = SquadExample(
+                    qas_id=qas_id,
+                    question_text=question_text,
+                    context_text=context_text,
+                    answer_text=answer_text,
+                    start_position_character=start_position_character,
+                    title=title,
+                    is_impossible=is_impossible,
+                    answers=answers,
+                )
+                if is_impossible:
+                    no_answer_cnt += 1
+                    per_qa_unans_paragraph_cnt += 1
+                else:
+                    has_answer_cnt += 1
+
+                if is_impossible and per_qa_unans_paragraph_cnt > 3:
+                    continue
+
+                # todo: How to select training samples considering a memory limit.
+                per_qa_paragraph_cnt += 1
+                if is_training and per_qa_paragraph_cnt > 3:
+                    break
+
+                examples.append(example)
+
+        print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
+        return examples
 
 
 class SquadV1Processor(SquadProcessor):

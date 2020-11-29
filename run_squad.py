@@ -325,6 +325,8 @@ def train(args, train_dataset, model, tokenizer):
                         _no_f1, _no_exact = no_ans_eval["f1"], no_ans_eval["exact"]
                         is_best = _f1 > best_f1
                         best_f1 = max(_f1, best_f1)
+                        # is_best = _has_f1 + _no_f1 > best_f1
+                        # best_f1 = max(_has_f1 + _no_f1, best_f1)
 
                         current_loss = (tr_loss - logging_loss) / args.logging_steps
                         logging_loss = tr_loss

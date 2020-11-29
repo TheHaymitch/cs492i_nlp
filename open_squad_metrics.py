@@ -234,7 +234,7 @@ def find_all_best_thresh(main_eval, preds, exact_raw, f1_raw, na_probs, qid_to_h
     main_eval["best_f1_thresh"] = f1_thresh
 
 
-def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_threshold=1.0, val_or_test="test"):
+def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_threshold=1.0, val_or_test="valid"):
     qas_id_to_has_answer = {example.qas_id: bool(example.answers) for example in examples}
     has_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if has_answer]
     no_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if not has_answer]
@@ -457,12 +457,19 @@ def select_best_predictions(all_nbest_json, null_score_diff_threshold=None):
             best_answer_max_prob[qa_id_without_s] = prob
             best_answer_predictions[qa_id_without_s] = text
         else:
-            # if best_answer_predictions[qa_id_without_s] == text:
-            #     best_answer_max_prob[qa_id_without_s] += prob
-            is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
-            if is_max_prob_updated:
+            if text != "" and best_answer_predictions[qa_id_without_s] == "":
                 best_answer_max_prob[qa_id_without_s] = prob
                 best_answer_predictions[qa_id_without_s] = text
+            elif text == "" and best_answer_predictions[qa_id_without_s] !="":
+                continue
+            else:
+                is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
+                if text == best_answer_predictions[qa_id_without_s]:
+                    best_answer_max_prob[qa_id_without_s] += prob
+                    best_answer_predictions[qa_id_without_s] = text
+                elif is_max_prob_updated:
+                    best_answer_max_prob[qa_id_without_s] = prob
+                    best_answer_predictions[qa_id_without_s] = text
     return best_answer_predictions
 
 
@@ -661,22 +668,22 @@ def compute_predictions_logits(
                 all_predictions[example.qas_id] = best_non_null_entry.text
             all_nbest_json[example.qas_id] = nbest_json
 
-    # if not is_test:
-    #     with open(output_prediction_file, "w") as writer:
-    #         writer.write(json.dumps(all_predictions, indent=4) + "\n")
+    if not is_test:
+        with open(output_prediction_file, "w") as writer:
+            writer.write(json.dumps(all_predictions, indent=4) + "\n")
 
-    #     with open(output_nbest_file, "w") as writer:
-    #         writer.write(json.dumps(all_nbest_json, indent=4) + "\n")
+        with open(output_nbest_file, "w") as writer:
+            writer.write(json.dumps(all_nbest_json, indent=4) + "\n")
 
-    #     if version_2_with_negative:
-    #         with open(output_null_log_odds_file, "w") as writer:
-    #             writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
+        if version_2_with_negative:
+            with open(output_null_log_odds_file, "w") as writer:
+                writer.write(json.dumps(scores_diff_json, indent=4) + "\n")
 
-    #     return all_predictions
+        return all_predictions
 
-    # else:
+    else:
         # todo: How to select the best answer among different contexts.
-    return select_best_predictions(all_nbest_json, null_score_diff_threshold)
+        return select_best_predictions(all_nbest_json, null_score_diff_threshold)
 
 
 def compute_predictions_log_probs(
