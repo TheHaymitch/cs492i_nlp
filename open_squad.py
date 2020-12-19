@@ -441,7 +441,7 @@ def squad_convert_examples_to_features(
 
 
 
-
+#  naive method to calculate the similarity between question and paragraph context - "share count"
 def share_words(sent1, sent2):
     if len(sent1) == 0 or len(sent2) == 0:
         return 0
@@ -640,11 +640,13 @@ class SquadProcessor(DataProcessor):
                 else:
                     has_answer_cnt += 1
 
+                #  4 paragraphs led to better performance
                 if is_impossible and per_qa_unans_paragraph_cnt > 4:
                     continue
 
                 # todo: How to select training samples considering a memory limit.
                 per_qa_paragraph_cnt += 1
+                #  4 paragraphs led to better performance
                 if is_training and per_qa_paragraph_cnt > 4:
                     break
 

@@ -889,6 +889,7 @@ def main():
 
     # Training
     if args.do_train:
+        # loading model for intensive reading
         # nsml.load(checkpoint='electra_best', session='kaist002/korquad-open-ldbd3/397')
         # nsml.save('saved')
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False)

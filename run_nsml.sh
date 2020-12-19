@@ -2,7 +2,7 @@
 nsml run \
   -m 'kaist korquad open' \
   -d korquad-open-ldbd3 \
-  -g 2 \
+  -g 1 \
   -c 8 \
   -e run_squad.py \
   -a "--model_type electra
@@ -19,4 +19,4 @@ nsml run \
     --version_2_with_negative
     --threads 8
     --fp16
-    --fp16_opt_level O1"
+    --fp16_opt_level O2"

@@ -234,6 +234,7 @@ def find_all_best_thresh(main_eval, preds, exact_raw, f1_raw, na_probs, qid_to_h
     main_eval["best_f1_thresh"] = f1_thresh
 
 
+#  val_or_test="valid" is making evaluation per paragraph, val_or_test="test" is making evaluation per question
 def squad_evaluate(examples, preds, no_answer_probs=None, no_answer_probability_threshold=1.0, val_or_test="test"):
     qas_id_to_has_answer = {example.qas_id: bool(example.answers) for example in examples}
     has_answer_qids = [qas_id for qas_id, has_answer in qas_id_to_has_answer.items() if has_answer]
@@ -466,18 +467,22 @@ def select_best_predictions(all_nbest_json, null_score_diff_threshold=None):
             #     best_answer_max_prob[qa_id_without_s] = prob
             #     best_answer_predictions[qa_id_without_s] = text
         else:
+            #  make a answer dictionary 
             if text in answer_dict:
                 answer_dict[text] += prob
             else:
                 answer_dict[text] = prob
             # if text != "" and best_answer_predictions[qa_id_without_s] == "" and prob >=0.2:
+            # higher priority is given to answer containing case
             if text != "" and best_answer_predictions[qa_id_without_s] == "":
                 best_answer_max_prob[qa_id_without_s] = prob
                 best_answer_predictions[qa_id_without_s] = text
+            # higher priority is given to answer containing case
             elif text == "" and best_answer_predictions[qa_id_without_s] !="":
                 continue
             else:
                 is_max_prob_updated = answer_dict[text] > best_answer_max_prob[qa_id_without_s]
+                #  sum up the probability of multiple instances of the same answer
                 if text == best_answer_predictions[qa_id_without_s]:
                     best_answer_max_prob[qa_id_without_s] += prob
                     best_answer_predictions[qa_id_without_s] = text

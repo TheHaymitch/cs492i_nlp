@@ -58,9 +58,9 @@ class ElectraForRetroReader(ElectraPreTrainedModel):
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             choice_loss = loss_fct(has_log, is_impossibles)
-            # intensive reading
+            # intensive reading - learning the actual span of the answer (start, end span)
             total_loss = (start_loss + end_loss)/2
-            # sketchy reading
+            # sketchy reading - learning only the answerability of the question
             # total_loss = choice_loss
             outputs = (total_loss,) + outputs
         return outputs 
