@@ -2,13 +2,19 @@ from torch import nn
 from transformers import *
 from torch.nn import CrossEntropyLoss
 
-class ElectraForQuestionAnsweringAVPool(ElectraPreTrainedModel):
+'''
+본 스크립트는 다음의 파일을 바탕으로 작성 됨
+https://github.com/cooelf/AwesomeMRC/blob/9ff6dfe3c183d7ae8c7ad46ae88e19bf2c352098/transformer-mrc/transformers/modeling_albert.py
+'''
+
+class ElectraForRetroReader(ElectraPreTrainedModel):
     def __init__(self, config):
-        super(ElectraForQuestionAnsweringAVPool, self).__init__(config)
+        super(ElectraForRetroReader, self).__init__(config)
         self.num_labels = config.num_labels
+        # config.hidden_dropout_prob=0.5
 
         self.electra = ElectraModel(config)
-        self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
+        self.answer = nn.Linear(config.hidden_size, config.num_labels)
         self.has_ans = nn.Sequential(nn.Dropout(p=config.hidden_dropout_prob), nn.Linear(config.hidden_size, 2))
 
         self.init_weights()
@@ -27,26 +33,22 @@ class ElectraForQuestionAnsweringAVPool(ElectraPreTrainedModel):
 
         sequence_output = outputs[0]
 
-        logits = self.qa_outputs(sequence_output)
+        logits = self.answer(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
         first_word = sequence_output[:, 0, :]
-
-        # has_inp = torch.cat([p_avg, first_word, q_summ, p_avg_p], -1)
         has_log = self.has_ans(first_word)
 
         outputs = (start_logits, end_logits, has_log,) + outputs[2:]
         if start_positions is not None and end_positions is not None:
-            # If we are on multi-GPU, split add a dimension
             if len(start_positions.size()) > 1:
                 start_positions = start_positions.squeeze(-1)
             if len(end_positions.size()) > 1:
                 end_positions = end_positions.squeeze(-1)
             if len(is_impossibles.size()) > 1:
                 is_impossibles = is_impossibles.squeeze(-1)
-            # sometimes the start/end positions are outside our model inputs, we ignore these terms
             ignored_index = start_logits.size(1)
             start_positions.clamp_(0, ignored_index)
             end_positions.clamp_(0, ignored_index)
@@ -56,9 +58,9 @@ class ElectraForQuestionAnsweringAVPool(ElectraPreTrainedModel):
             start_loss = loss_fct(start_logits, start_positions)
             end_loss = loss_fct(end_logits, end_positions)
             choice_loss = loss_fct(has_log, is_impossibles)
-            total_loss = (start_loss + end_loss + choice_loss) / 3
+            # intensive reading
+            total_loss = (start_loss + end_loss)/2
+            # sketchy reading
+            # total_loss = choice_loss
             outputs = (total_loss,) + outputs
-            #print(sum(is_impossibles==1),sum(is_impossibles==0))
-            # print(start_logits, end_logits, has_log, is_impossibles)
-            # print(start_loss, end_loss, choice_loss)
-        return outputs # (loss), start_logits, end_logits, (hidden_states), (attentions)
+        return outputs 

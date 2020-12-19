@@ -24,7 +24,7 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 # import torch.utils.checkpoint as checkpoint
 
-# from models import ElectraForQuestionAnsweringAVPool
+# from models import ElectraForRetroReader
 
 from transformers import (
     AdamW,
@@ -101,7 +101,7 @@ MODEL_CLASSES = {
     "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer),
     "albert": (AlbertConfig, AlbertForQuestionAnswering, AlbertTokenizer),
     "electra" : (ElectraConfig, ElectraForQuestionAnswering, ElectraTokenizer),
-    # "electra" : (ElectraConfig, ElectraForQuestionAnsweringAVPool, ElectraTokenizer),
+    # "electra" : (ElectraConfig, ElectraForRetroReader, ElectraTokenizer),
 }
 
 
@@ -275,6 +275,7 @@ def train(args, train_dataset, model, tokenizer):
                 "start_positions": batch[3],
                 "end_positions": batch[4],
             }
+            #  uncomment for retrospective reader
             # if args.version_2_with_negative:
             #     inputs.update({"is_impossibles": batch[5]})
 
@@ -325,8 +326,6 @@ def train(args, train_dataset, model, tokenizer):
                         _no_f1, _no_exact = no_ans_eval["f1"], no_ans_eval["exact"]
                         is_best = _f1 > best_f1
                         best_f1 = max(_f1, best_f1)
-                        # is_best = _has_f1 + _no_f1 > best_f1
-                        # best_f1 = max(_has_f1 + _no_f1, best_f1)
 
                         current_loss = (tr_loss - logging_loss) / args.logging_steps
                         logging_loss = tr_loss
@@ -453,6 +452,7 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
                 )
 
             else:
+                # uncomment for retrospective reader
                 # start_logits, end_logits, choice_logits = output
                 # result = SquadResult(unique_id, start_logits, end_logits, choice_logits)
                 start_logits, end_logits = output
@@ -889,6 +889,8 @@ def main():
 
     # Training
     if args.do_train:
+        # nsml.load(checkpoint='electra_best', session='kaist002/korquad-open-ldbd3/397')
+        # nsml.save('saved')
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False)
         global_step, tr_loss = train(args, train_dataset, model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
