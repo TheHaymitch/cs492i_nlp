@@ -1,8 +1,8 @@
-# korquad-open-cs492I
-KorQuad-Open Baseline Code for KAIST CS492I 2020 Fall
+# Task-Specific Machine Reading Comprehension and Retrospective Reader - CS492 NLP Project Team Zoommalgo
+Question Answering task using NAVER KorQuAD-Open dataset.
 
-## Original Author
-Seonhoon Kim (Naver)
+## Path to Best Pretrained Model
+* kaist002/korquad-open-ldbd3/273/electra_gs16000_e1
 
 ## Train in NSML
 ```bash
@@ -14,30 +14,35 @@ sh run_nsml.sh
 ```bash
 sh run_local.sh
 ```
+## Dataset Information
+NAVER KorQuAD-Open training dataset is consisted of 66367 questions with 18.47 paragraphs per question in average. Among these questions, 64.6% are questions which includes the answer in multiple paragraphs. The goal of this task is to give the correct answer for a question if the answer is included in paragraphs. On the other hand, if the answer does not exist in context paragraphs, the machine has to predict null string for this case.
 
-## How to Improve?
+## Methods
 
-### Improve how to select the best answer among different contexts.
-
-We deal with a QA task with a single question and multiple contexts (i.e., paragraphs). One of the most important issues in this type of task is in which paragraph to pick the answer span. Current naive implementation is comparing the probability in a prediction and choosing the paragraph with the largest. Implement a strategy to pick the best answer.
-
-See the codes:
-- https://github.com/dongkwan-kim/korquad-open-cs492i/blob/master/open_squad_metrics.py#L412
-- https://github.com/dongkwan-kim/korquad-open-cs492i/blob/master/open_squad_metrics.py#L639
-- https://github.com/dongkwan-kim/korquad-open-cs492i/blob/master/run_squad.py#L358
-
-**NOTE: In the baseline, you can find the huge gap between validation and test performances (f1-score), since the f1-score for the validation is measured per paragraph, and the f1-score for the test is measured per question.**
-
-![val_f1](https://raw.githubusercontent.com/dongkwan-kim/korquad-open-cs492i/master/static/val_f1.png)
-![test_f1](https://raw.githubusercontent.com/dongkwan-kim/korquad-open-cs492i/master/static/test_f1.png)
-
-### Improve how to select training samples considering a memory limit.
-
-There are multiple contexts, but since there is a memory limit, we cannot include everything in training. The baseline is using first three samples in sequence. Which training samples should we choose to learn the best representation? 
+Main contribution is from changing the answer prediction method. Giving high priority to answer containing predictions than null string prediction gave a huge boost to the performance. 
 
 See the codes:
-- https://github.com/dongkwan-kim/korquad-open-cs492i/blob/master/open_squad.py#L594
+- https://github.com/qbhan/cs492i_nlp/blob/main/open_squad_metrics.py#L448
 
-### Change model and hyper-parameter configurations.
+Instead of multilingual BERT, KoELECTRA is used for faster training and better test f1 accuracy. (monologg/koelectra-base-v2-discriminator).
+Instead of using three paragraphs, using four paragraphs lead to a slight improvement to the test f1 accuracy.
 
-Do as much as you want.
+See the codes:
+- https://github.com/qbhan/cs492i_nlp/blob/main/open_squad.py#L644
+- https://github.com/qbhan/cs492i_nlp/blob/main/open_squad.py#L650
+
+Other than these contributions, we tried several approaches; applying retrospective reader with sketchy and intensive reader, trying different paragraph extraction method based on similarity between question and context (force answer, max 2, sentence transformer). Also, in the process of some preliminary experiments, we found that there is a huge discrepancy between valid and test accuracy. This discrepancy came from using different criteria for calculating the accuracy. For validation metric, the score was calculated per paragraphs while for test metric, it was calculated per question. For the ease of debugging, we changed the metric of validation similar to test metric.
+
+## Results
+* After fintuning with appropriate hyperparameters, our best test f1 score was 0.703. We ranked second place in <a href= "https://ai.nsml.navercorp.com/">NSML</a> leaderboard system.
+
+
+| Model                   | Test F1 score |
+| -----------------------:| -------------:|
+| Baseline Model          | 0.361         |
+| Ours                    | **0.703**     | 
+
+## References
+* <a href = "https://arxiv.org/pdf/2001.09694">Retrospective reader for machine reading comprehension (2020)</a>
+* <a href = "https://openreview.net/pdf?id=r1xMH1BtvB">ELECTRA: Pre-training Text Encoders as Discriminators Rather Than Generators (2020)</a>
+
